@@ -1,10 +1,8 @@
 name: Build APK
-
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,19 +15,19 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Prepare web files
-        run: |
-          mkdir -p www
-          cp index.html www/
-      - run: npm install
-      - run: npx cap add android
-      - run: npx cap sync android
       - name: Build debug APK
         run: |
+          npm init -y
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/filesystem@6 @capacitor/share@6
+          mkdir www
+          cp index.html manifest.webmanifest sw.js icon-192.png icon-512.png www/
+          npx cap init "Old Meter Received" com.sngpl.oldmeters --web-dir www
+          npx cap add android
+          npx cap sync android
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: meter-box-apk
+          name: old-meters-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
