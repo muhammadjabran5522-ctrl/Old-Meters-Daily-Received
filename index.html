@@ -50,6 +50,9 @@ html{zoom:.75}#fit{font-size:18px;font-weight:600}
 textarea{width:100%;font:inherit;font-size:17px;padding:10px;margin-bottom:10px;border-radius:10px;border:2px solid var(--bd);background:var(--bg);color:var(--tx)}
 #fmsg{min-height:20px;font-size:14px;margin:8px 0;font-weight:600}
 @media print{html{zoom:1}}
+#mno{border-color:var(--bad);background:rgba(198,40,40,.08)}#mno:focus{border-color:var(--bad)}label[for=mno]{color:var(--bad)}
+.x{color:var(--pri);font-weight:600}
+.set{display:none}body.seton .set{display:block}
 </style>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0b5cff">
@@ -62,22 +65,38 @@ textarea{width:100%;font:inherit;font-size:17px;padding:10px;margin-bottom:10px;
 <div class="card noprint">
 <label for="fit">Fitter Name (jo meter return kare)</label>
 <select id="fit"></select>
+<label for="acc">Account ID (ACL)</label>
+<input id="acc" inputmode="numeric" autocomplete="off" maxlength="14">
 <label for="mno">Old Meter No</label>
 <input id="mno" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="00000000">
 <div id="info" class="info"></div>
 <label for="rd">Reading (00000.000)</label>
-<input id="rd" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="00000.000">
+<input id="rd" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off">
 <label for="nm">New Meter No (jis ke against replace hua)</label>
 <input id="nm" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="00000000">
 <button class="add" id="add">Add to List</button>
+<button class="btn" id="cx" style="display:none;margin-top:8px">Cancel Edit</button>
 <div id="msg"></div>
 </div>
 
 <div class="card noprint">
-<div class="tb"><button id="xl">Excel</button><button id="mx">Master Excel</button><input type="file" id="mxf" accept=".xlsx,.xls" hidden><button id="csv">CSV</button><button id="pr">Print / PDF</button><button id="copy">Copy</button><button id="clr">Sab saaf karen</button></div>
+<div class="tb"><button id="xl">Excel</button><button id="mx">Master Excel</button><input type="file" id="mxf" accept=".xlsx,.xls" hidden><button id="im">Import List</button><input type="file" id="imf" accept=".xlsx,.xls,.csv,.txt" hidden><button id="csv">CSV</button><button id="pr">Print / PDF</button><button id="wa">WhatsApp</button><button id="copy">Copy</button><button id="clr">Clear</button><button id="st">Settings</button></div>
 </div>
 
-<div class="card noprint">
+<div class="card noprint" id="wac" style="display:none">
+<label for="wf">Fitter</label><select id="wf"></select>
+<label for="wd">Date</label><select id="wd"></select>
+<textarea id="wt" rows="10" readonly></textarea>
+<button class="add" id="wimg">Image bhejein (table jaisi)</button>
+<button class="btn" id="wsend" style="margin-top:8px">Text bhejein</button>
+<button class="btn" id="wcopy" style="margin-top:8px">Copy</button>
+<button class="btn" id="wcl" style="margin-top:8px;background:var(--mut)">Band karein</button>
+<div id="wmsg"></div>
+</div>
+
+<div class="card noprint" id="impc" style="display:none"><div id="impm"></div></div>
+
+<div class="card noprint set">
 <div id="aclst">ACL not loaded</div>
 <button class="btn" id="aclb">Load / Update ACL (CSV or Excel)</button>
 <input type="file" id="aclf" accept=".csv,.txt,.xlsx,.xls" hidden>
@@ -85,7 +104,7 @@ textarea{width:100%;font:inherit;font-size:17px;padding:10px;margin-bottom:10px;
 <div id="map"></div>
 </div>
 
-<div class="card noprint">
+<div class="card noprint set">
 <label for="ftxt">Fitter List (har line mein ek naam)</label>
 <textarea id="ftxt" rows="6"></textarea>
 <button class="btn" id="fsave">Save Fitter List</button>
@@ -131,24 +150,24 @@ function msg(t,c){var m=$('msg');m.textContent=t;m.className=c||''}
 function fmt(d){d=d.replace(/\D/g,'').replace(/^0+/,'').slice(0,8);return d?d.padStart(8,'0').replace(/^(\d{5})(\d{3})$/,'$1.$2'):''}
 $('mno').addEventListener('input',function(){this.value=this.value.replace(/\D/g,'')});
 $('rd').addEventListener('input',function(){
-  var raw=this.value, v=fmt(raw);
-  if(!v&&raw)v='00000.000';
+  var v=this.value.replace(/[^\d.]/g,''),i=v.indexOf('.');
+  if(i>=0)v=v.slice(0,i+1)+v.slice(i+1).replace(/\./g,'');
   this.value=v;
-  var n=v.length;try{this.setSelectionRange(n,n)}catch(e){}
 });
+$('rd').addEventListener('blur',function(){this.value=fmtR(this.value)});
 $('mno').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();$('rd').focus()}});
 $('rd').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();$('nm').focus()}});
 function add(){
-  var f=$('fit').value.trim(), m=$('mno').value.trim(), r=$('rd').value.trim(), nm=$('nm').value.trim();
-  if(!f){msg('Fitter chunein (naam neeche Fitter List mein add karein)','err');$('fit').focus();return}
+  var f=$('fit').value.trim(), m=$('mno').value.trim(), r=fmtR($('rd').value), nm=$('nm').value.trim(), acc=$('acc').value.trim();
+  if(!f){msg('Fitter chunein (Settings mein Fitter List mein naam add karein)','err');$('fit').focus();return}
   if(m.length!==8){msg('Old Meter No 8 digits ka hona chahiye ('+m.length+' likhe hain)','err');$('mno').focus();return}
   if(!r){msg('Reading likhein','err');$('rd').focus();return}
   if(nm&&nm.length<7){msg('New Meter No poora likhein','err');$('nm').focus();return}
-  for(var i=0;i<items.length;i++){if(items[i].m===m){msg('Yeh meter pehle se list mein hai (Sr '+(i+1)+')','err');return}}
-  var c=lookup(m);
-  items.push({m:m,r:r,nm:nm,f:f,t:today(),a:c?c[0]:'',n:c?c[1]:'',d:c?c[2]:''});save();remFit(f);
-  $('mno').value='';$('rd').value='';$('nm').value='';showInfo();
-  msg('Added: '+m+'   '+r,'good');
+  for(var i=0;i<items.length;i++){if(items[i].m===m&&i!==ei){msg('Yeh meter pehle se list mein hai (Sr '+(i+1)+')','err');return}}
+  var c=cur();
+  var wasEdit=ei>=0,rec={m:m,r:r,nm:nm,f:f,t:today(),a:acc||(c?c[0]:''),n:c?c[1]:'',d:c?c[2]:'',b:c?(c[4]||''):''};if(wasEdit){rec.t=items[ei].t||rec.t;items[ei]=rec}else items.push(rec);save();remFit(f);endEdit();
+  $('acc').value='';$('mno').value='';$('rd').value='';$('nm').value='';showInfo();
+  msg((wasEdit?'Updated: ':'Added: ')+m+'   '+r,'good');
   render();$('mno').focus();
 }
 $('add').onclick=add;
@@ -168,8 +187,8 @@ function render(){
     for(var i=items.length-1;i>=0;i--){
       var it=items[i];
       if(q&&it.m.indexOf(q)<0&&(it.nm||'').indexOf(q)<0)continue;
-      h+='<tr><td>'+(i+1)+'</td><td class="m">'+esc(it.m)+'</td><td>'+esc(it.r)+'</td><td class="m">'+esc(it.nm||'')+'</td><td class="f">'+esc(it.f||'')+'</td><td class="noprint"><button class="x" onclick="del('+i+')">'+(pend[i]?'Delete?':'&#10005;')+'</button></td></tr>';
-      h+='<tr class="sb"><td colspan="6">'+esc(it.t||'')+(it.n?' | '+esc(it.a)+' - '+esc(it.n)+(it.d?', '+esc(it.d):''):'')+'</td></tr>';
+      h+='<tr><td>'+(i+1)+'</td><td class="m">'+esc(it.m)+'</td><td>'+esc(it.r)+'</td><td class="m">'+esc(it.nm||'')+'</td><td class="f">'+esc(it.f||'')+'</td><td class="noprint"><button class="x" onclick="edit('+i+')">Edit</button></td></tr>';
+      h+='<tr class="sb"><td colspan="6">'+esc(it.t||'')+((it.a||it.n)?' | '+esc(it.a||'')+(it.n?' - '+esc(it.n):'')+(it.d?', '+esc(it.d):'')+(it.b?' | TBS: '+esc(it.b):''):'')+'</td></tr>';
     }
     h+='</table>';
   }
@@ -182,8 +201,8 @@ $('copy').onclick=function(){
   function fb(){var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');msg('List copy ho gayi - Excel mein paste karein','good')}catch(e){msg('Copy nahi hui','err')}document.body.removeChild(a)}
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(function(){msg('List copy ho gayi - Excel mein paste karein','good')},fb)}else fb();
 };
-var COLS=['Sr','Old Meter No','Reading','New Meter No','Fitter Name','Received Date','Account ID','Consumer Name','Address'];
-function data(){return [COLS].concat(items.map(function(x,i){return [i+1,x.m,x.r,x.nm||'',x.f||'',x.t||'',x.a||'',x.n||'',x.d||'']}))}
+var COLS=['Sr','Old Meter No','Reading','New Meter No','Fitter Name','Received Date','Account ID','Consumer Name','Address','TBS'];
+function data(){return [COLS].concat(items.map(function(x,i){return [i+1,x.m,x.r,x.nm||'',x.f||'',x.t||'',x.a||'',x.n||'',x.d||'',x.b||'']}))}
 function fname(e){return 'old_meters_'+today()+'.'+e}
 async function saveFile(name,d,mime){
   var dl=null;try{dl=window.claude?await claude.use('downloads'):null}catch(e){}
@@ -204,8 +223,8 @@ async function saveFile(name,d,mime){
 $('xl').onclick=function(){
   if(!items.length){msg('List khali hai','err');return}
   if(typeof XLSX==='undefined'){msg('Excel library load nahi hui, internet check karein','err');return}
-  var ws=XLSX.utils.aoa_to_sheet(data());ws['!cols']=[{wch:6},{wch:14},{wch:14},{wch:14},{wch:18},{wch:13},{wch:16},{wch:28},{wch:40}];
-  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Old Meters');
+  var ws=XLSX.utils.aoa_to_sheet(data());ws['!cols']=[{wch:6},{wch:14},{wch:14},{wch:14},{wch:18},{wch:13},{wch:16},{wch:28},{wch:40},{wch:14}];
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Old Meters');addSum(wb,data().slice(1));
   saveFile(fname('xlsx'),XLSX.write(wb,{bookType:'xlsx',type:'array'}),'application/octet-stream').then(function(ok){if(ok)markSaved()});
 };
 $('csv').onclick=function(){
@@ -242,45 +261,244 @@ $('mxf').onchange=function(){
     body.forEach(function(r){seen[nk(r[1])]=1});
     data().slice(1).forEach(function(r){if(seen[nk(r[1])])dup++;else{body.push(r);add++}});
     body.forEach(function(r,i){r[0]=i+1});
-    var ws2=XLSX.utils.aoa_to_sheet([COLS].concat(body));ws2['!cols']=[{wch:6},{wch:14},{wch:14},{wch:14},{wch:18},{wch:13},{wch:16},{wch:28},{wch:40}];
-    var wb2=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb2,ws2,'Old Meters');
-    saveFile(f.name.replace(/\.xls$/i,'.xlsx'),XLSX.write(wb2,{bookType:'xlsx',type:'array'}),'application/octet-stream').then(function(ok){if(ok){markSaved();msg('Master update: '+add+' nayi, '+dup+' duplicate skip, total '+body.length+'. Ab Sab saaf karen','good')}});
+    var ws2=XLSX.utils.aoa_to_sheet([COLS].concat(body));ws2['!cols']=[{wch:6},{wch:14},{wch:14},{wch:14},{wch:18},{wch:13},{wch:16},{wch:28},{wch:40},{wch:14}];
+    var wb2=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb2,ws2,'Old Meters');addSum(wb2,body);
+    saveFile(f.name.replace(/\.xls$/i,'.xlsx'),XLSX.write(wb2,{bookType:'xlsx',type:'array'}),'application/octet-stream').then(function(ok){if(ok){markSaved();msg('Master update: '+add+' nayi, '+dup+' duplicate skip, total '+body.length+'. Ab Clear dabayein','good')}});
   }catch(e){msg('Excel file nahi parhi ja saki','err')}};
   rd.onerror=function(){msg('File nahi khuli','err')};
   rd.readAsArrayBuffer(f);
 };
+var ei=-1;
+function endEdit(){ei=-1;$('add').textContent='Add to List';$('cx').style.display='none'}
+function edit(i){
+  var it=items[i];if(!it)return;
+  if(it.f&&FL.indexOf(it.f)<0){FL.push(it.f);fdl()}
+  ei=i;$('fit').value=it.f||'';$('mno').value=it.m;$('rd').value=it.r;$('nm').value=it.nm||'';$('acc').value=it.a||'';showInfo();
+  $('add').textContent='Update Entry (Sr '+(i+1)+')';$('cx').style.display='block';
+  msg('Edit mode: Sr '+(i+1),'good');window.scrollTo(0,0);
+}
+$('cx').onclick=function(){endEdit();$('acc').value='';$('mno').value='';$('rd').value='';$('nm').value='';showInfo();msg('Edit cancel')};
+function addSum(wb,rows){
+  var dk=function(s){var m=/^(\d{2})-(\d{2})-(\d{4})$/.exec(s);return m?m[3]+m[2]+m[1]:'9'+s};
+  var dt={},n=0;
+  rows.forEach(function(r){var d=String(r[5]||'').trim()||'(no date)';dt[d]=(dt[d]||0)+1;n++});
+  var dl=Object.keys(dt).sort(function(a,b){return dk(a)<dk(b)?-1:1});
+  function mat(idx,lab,sh){
+    var c={};rows.forEach(function(r){var f=String(r[idx]||'').trim()||'(blank)',d=String(r[5]||'').trim()||'(no date)';c[f]=c[f]||{};c[f][d]=(c[f][d]||0)+1});
+    var a=[[lab].concat(dl,['Total'])];
+    Object.keys(c).sort().forEach(function(k){var t=0,row=[k];dl.forEach(function(d){var v=c[k][d]||0;t+=v;row.push(v||'')});row.push(t);a.push(row)});
+    a.push(['TOTAL'].concat(dl.map(function(d){return dt[d]}),[n]));
+    var w=XLSX.utils.aoa_to_sheet(a);w['!cols']=[{wch:26}].concat(dl.map(function(){return {wch:12}}),[{wch:10}]);XLSX.utils.book_append_sheet(wb,w,sh);
+  }
+  mat(4,'Fitter Name','Fitter Summary');
+  if(rows.some(function(r){return String(r[9]||'').trim()}))mat(9,'TBS','TBS Summary');
+  var b=[['Date','Total Meters']];dl.forEach(function(d){b.push([d,dt[d]])});b.push(['TOTAL',n]);
+  var w2=XLSX.utils.aoa_to_sheet(b);w2['!cols']=[{wch:14},{wch:14}];XLSX.utils.book_append_sheet(wb,w2,'Date Summary');
+}
+$('st').onclick=function(){var o=document.body.classList.toggle('seton');this.textContent=o?'Settings band':'Settings';if(o){var e=document.querySelector('.set');if(e)e.scrollIntoView()}};
+function fmtR(v){
+  v=String(v).replace(/[^\d.]/g,'');if(!v)return '';
+  var i=v.indexOf('.');
+  if(i>=0){var a=v.slice(0,i).slice(-5),b=v.slice(i+1).replace(/\./g,'').slice(0,3);return a.padStart(5,'0')+'.'+b.padEnd(3,'0')}
+  v=v.slice(0,8).padStart(8,'0');return v.slice(0,5)+'.'+v.slice(5);
+}
+var irows=null;
+function ds(v){var d=new Date(Math.round((v-25569)*864e5)),p=function(n){return String(n).padStart(2,'0')};return p(d.getUTCDate())+'-'+p(d.getUTCMonth()+1)+'-'+d.getUTCFullYear()}
+$('im').onclick=function(){$('imf').click()};
+$('imf').onchange=function(){
+  var f=this.files[0];if(!f)return;this.value='';
+  var ext=f.name.split('.').pop().toLowerCase(),txt=(ext==='csv'||ext==='txt'),r=new FileReader();
+  msg('File parh rahe hain...');
+  r.onload=function(){try{
+    var rows;
+    if(txt)rows=parseCSV(r.result);
+    else{if(typeof XLSX==='undefined'){msg('Excel library load nahi hui, CSV use karein','err');return}
+      var wb=XLSX.read(r.result,{type:'array'});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''})}
+    impMap(rows);
+  }catch(e){msg('File nahi parhi ja saki','err')}};
+  r.onerror=function(){msg('File nahi khuli','err')};
+  if(txt)r.readAsText(f);else r.readAsArrayBuffer(f);
+};
+function impMap(rows){
+  rows=rows.filter(function(r){return r&&r.some(function(x){return String(x).trim()!==''})});
+  if(!rows.length){msg('File mein data nahi hai','err');return}
+  irows=rows;var h=rows[0].map(String);
+  function g(re,ex,d){for(var i=0;i<h.length;i++){var t=h[i].toLowerCase();if(re.test(t)&&!(ex&&ex.test(t)))return i}return d}
+  var mi=g(/meter/,/new/,0),ri=g(/reading/,null,Math.min(1,h.length-1)),ni=g(/new/,null,-1),fi=g(/fitter/,null,-1),di=g(/date/,null,-1);
+  function opt(o){return (o?'<option value="-1">-- nahi --</option>':'')+h.map(function(x,i){return '<option value="'+i+'">'+esc(x||('Column '+(i+1)))+'</option>'}).join('')}
+  var sel=[['Old Meter No *','im_m',mi,0],['Reading *','im_r',ri,0],['New Meter No','im_n',ni,1],['Fitter Name (nahi ho to upar chuna hua fitter)','im_f',fi,1],['Received Date (nahi ho to aaj ki)','im_d',di,1]];
+  $('impm').innerHTML='<label>Import List: '+rows.length+' rows, columns chunein</label>'+sel.map(function(s){return '<label>'+s[0]+'</label><select id="'+s[1]+'">'+opt(s[3])+'</select>'}).join('')+'<button class="add" id="imgo">Import karein</button><button class="btn" id="imcx" style="margin-top:8px">Cancel</button>';
+  sel.forEach(function(s){$(s[1]).value=s[2]});
+  $('impc').style.display='block';$('impc').scrollIntoView();
+  $('imgo').onclick=impGo;$('imcx').onclick=function(){$('impc').style.display='none';irows=null};
+}
+function impGo(){
+  var mi=+$('im_m').value,ri=+$('im_r').value,ni=+$('im_n').value,fi=+$('im_f').value,di=+$('im_d').value;
+  var st=/^\d{7,8}$/.test(String(irows[0][mi]).trim())?0:1,out=[],seen={},add=0,dup=0,bad=0,defF=$('fit').value||'';
+  items.forEach(function(x){seen[x.m]=1});
+  for(var k=st;k<irows.length;k++){
+    var r=irows[k],m=nk(r[mi]==null?'':r[mi]),rv=r[ri],rs=typeof rv==='number'?rv.toFixed(3):String(rv==null?'':rv).trim(),rf=fmtR(rs);
+    if(!/^\d{8}$/.test(m)||!rf){bad++;continue}
+    if(seen[m]){dup++;continue}
+    seen[m]=1;
+    var f=fi>=0?String(r[fi]==null?'':r[fi]).trim():defF,nm=ni>=0?String(r[ni]==null?'':r[ni]).replace(/\D/g,'').slice(0,8):'';
+    var dv=di>=0?r[di]:'',t=(typeof dv==='number'&&dv>20000)?ds(dv):String(dv==null?'':dv).trim();
+    if(!t)t=today();
+    var c=lookup(m);
+    out.push({m:m,r:rf,nm:nm,f:f,t:t,a:c?c[0]:'',n:c?c[1]:'',d:c?c[2]:''});
+    if(f&&FL.indexOf(f)<0)FL.push(f);
+    add++;
+  }
+  items=out.concat(items);endEdit();
+  try{localStorage.setItem('old_meter_fl',JSON.stringify(FL))}catch(e){}
+  fdl();save();render();
+  $('impc').style.display='none';irows=null;
+  msg('Import: '+add+' entries, '+dup+' duplicate, '+bad+' invalid. Ab aage entries karein','good');window.scrollTo(0,0);
+}
+function dkey(s){var m=/^(\d{2})-(\d{2})-(\d{4})$/.exec(s);return m?m[3]+m[2]+m[1]:'9'+s}
+function wm(t){var e=$('wmsg');e.textContent=t;e.className='good'}
+function wbuild(){
+  var f=$('wf').value,d=$('wd').value,g={},ord=[],n=0;
+  items.forEach(function(x,i){
+    if(f&&(x.f||'')!==f)return;if(d&&(x.t||'')!==d)return;
+    var k=x.f||'(fitter nahi)';if(!g[k]){g[k]=[];ord.push(k)}g[k].push([i+1,x]);n++;
+  });
+  if(!n)return 'Koi entry nahi mili';
+  var t='*Old Meters Received*\nDate: '+(d||'Sab dates')+'\n';
+  ord.sort().forEach(function(k){
+    t+='\n*'+k+'* ('+g[k].length+')\n';
+    g[k].forEach(function(p){var x=p[1];t+=p[0]+'. '+x.m+' | '+x.r+(x.nm?' | New: '+x.nm:'')+'\n'});
+  });
+  return t+'\n*Total: '+n+'*';
+}
+function wref(){$('wt').value=wbuild()}
+function wcopy(){var t=$('wt').value;function fb(){$('wt').select();try{document.execCommand('copy');wm('Copy ho gaya')}catch(e){wm('Copy nahi hua')}}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(function(){wm('Copy ho gaya')},fb)}else fb()}
+$('wa').onclick=function(){
+  if(!items.length){msg('List khali hai','err');return}
+  var fl={},dl={};items.forEach(function(x){fl[x.f||'']=1;dl[x.t||'']=1});
+  var fs=Object.keys(fl).filter(Boolean).sort(),dd=Object.keys(dl).filter(Boolean).sort(function(a,b){return dkey(a)<dkey(b)?-1:1});
+  $('wf').innerHTML='<option value="">Sab fitter</option>'+fs.map(function(x){return '<option>'+esc(x)+'</option>'}).join('');
+  $('wd').innerHTML='<option value="">Sab dates</option>'+dd.map(function(x){return '<option>'+esc(x)+'</option>'}).join('');
+  var td=today();if(dl[td])$('wd').value=td;
+  wref();$('wmsg').textContent='';$('wac').style.display='block';$('wac').scrollIntoView();
+};
+$('wf').onchange=wref;$('wd').onchange=wref;
+$('wcopy').onclick=wcopy;
+$('wcl').onclick=function(){$('wac').style.display='none'};
+$('wsend').onclick=async function(){
+  var t=$('wt').value,c=window.Capacitor;
+  if(c&&c.isNativePlatform&&c.isNativePlatform()&&c.Plugins&&c.Plugins.Share){try{await c.Plugins.Share.share({text:t,dialogTitle:'WhatsApp chunein'})}catch(e){}return}
+  if(navigator.share){try{await navigator.share({text:t});return}catch(e){if(e&&e.name==='AbortError')return}}
+  var u='https://wa.me/?text='+encodeURIComponent(t);
+  if(u.length<1900){window.open(u,'_blank')}else{wcopy();wm('Message lamba hai, copy ho gaya. WhatsApp mein paste karein')}
+};
+function wrapT(ctx,t,w){var words=String(t).split(' '),lines=[],l='';words.forEach(function(x){var tt=l?l+' '+x:x;if(ctx.measureText(tt).width>w&&l){lines.push(l);l=x}else l=tt});if(l)lines.push(l);return lines.slice(0,3)}
+function wcanvases(){
+  var f=$('wf').value,d=$('wd').value,list=[];
+  items.forEach(function(x,i){if(f&&(x.f||'')!==f)return;if(d&&(x.t||'')!==d)return;list.push([i+1,x])});
+  list.sort(function(a,b){return (a[1].f||'').localeCompare(b[1].f||'')||a[0]-b[0]});
+  var W=1080,M=24,cx=[M,M+90,M+330,M+560,M+800],cw=[90,240,230,240,W-2*M-800];
+  var m=document.createElement('canvas').getContext('2d');m.font='22px sans-serif';
+  var rows=[],lastF=null,cnt={};
+  list.forEach(function(p){var k=p[1].f||'(fitter nahi)';cnt[k]=(cnt[k]||0)+1});
+  list.forEach(function(p){
+    var x=p[1],k=x.f||'(fitter nahi)';
+    if(k!==lastF){rows.push({t:'f',k:k,h:60});lastF=k}
+    var det=(x.t||'')+((x.a||x.n)?' | '+(x.a||'')+(x.n?' - '+x.n:'')+(x.d?', '+x.d:''):'')+(x.b?' | TBS: '+x.b:'');
+    var ln=wrapT(m,det,W-2*M-20);
+    rows.push({t:'r',p:p,ln:ln,h:60+ln.length*28+12});
+  });
+  var pages=[],cu=[],h=0;
+  rows.forEach(function(r){if(h+r.h>3000&&cu.length){pages.push(cu);cu=[];h=0}cu.push(r);h+=r.h});
+  if(cu.length)pages.push(cu);
+  return pages.map(function(pg,pi){
+    var H=170+pg.reduce(function(s,r){return s+r.h},0)+16,c=document.createElement('canvas');c.width=W;c.height=H;
+    var g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,W,H);g.fillStyle='#14213d';g.textBaseline='middle';
+    g.font='bold 44px sans-serif';g.textAlign='center';g.fillText('Old Meters Received List',W/2,40);
+    g.font='bold 28px sans-serif';g.textAlign='left';g.fillText('Date: '+(d||'Sab dates'),M,92);
+    g.textAlign='right';g.fillText('Total meters: '+list.length+'  (Page '+(pi+1)+'/'+pages.length+')',W-M,92);
+    var y=122;g.fillStyle='#d9dde8';g.fillRect(M,y,W-2*M,46);g.fillStyle='#14213d';g.font='bold 24px sans-serif';g.textAlign='center';
+    ['Sr','Old Meter','Reading','New Meter','Fitter'].forEach(function(t,i){g.fillText(t,cx[i]+cw[i]/2,y+23)});
+    g.strokeStyle='#14213d';g.lineWidth=2;g.strokeRect(M,y,W-2*M,46);y+=46;
+    pg.forEach(function(r){
+      if(r.t==='f'){g.fillStyle='#e3edff';g.fillRect(M,y,W-2*M,60);g.strokeRect(M,y,W-2*M,60);g.fillStyle='#14213d';g.font='bold 30px sans-serif';g.textAlign='left';g.fillText(r.k+'  ('+cnt[r.k]+')',M+14,y+30);y+=60;return}
+      var x=r.p[1];
+      g.strokeRect(M,y,W-2*M,60);for(var i=1;i<5;i++){g.beginPath();g.moveTo(cx[i],y);g.lineTo(cx[i],y+60);g.stroke()}
+      g.fillStyle='#14213d';g.textAlign='center';
+      g.font='26px sans-serif';g.fillText(String(r.p[0]),cx[0]+cw[0]/2,y+30);
+      g.font='bold 30px sans-serif';g.fillText(x.m,cx[1]+cw[1]/2,y+30);
+      g.font='28px sans-serif';g.fillText(x.r,cx[2]+cw[2]/2,y+30);
+      g.font='bold 30px sans-serif';g.fillText(x.nm||'',cx[3]+cw[3]/2,y+30);
+      g.font='22px sans-serif';g.fillText(String(x.f||'').slice(0,14),cx[4]+cw[4]/2,y+30);
+      g.strokeRect(M,y+60,W-2*M,r.h-60);
+      g.fillStyle='#555';g.font='22px sans-serif';g.textAlign='left';
+      r.ln.forEach(function(t,j){g.fillText(t,M+10,y+60+20+j*28)});
+      y+=r.h;
+    });
+    return c;
+  });
+}
+function b64(b){return new Promise(function(res){var r=new FileReader();r.onload=function(){res(String(r.result).split(',')[1])};r.readAsDataURL(b)})}
+$('wimg').onclick=async function(){
+  var cs=wcanvases();if(!cs.length){wm('Koi entry nahi mili');return}
+  wm('Image ban rahi hai...');
+  var blobs=await Promise.all(cs.map(function(c){return new Promise(function(res){c.toBlob(res,'image/png')})}));
+  var names=blobs.map(function(b,i){return 'old_meters_'+(i+1)+'.png'});
+  var c=window.Capacitor;
+  if(c&&c.isNativePlatform&&c.isNativePlatform()&&c.Plugins&&c.Plugins.Filesystem&&c.Plugins.Share){
+    try{var us=[];for(var i=0;i<blobs.length;i++){var w=await c.Plugins.Filesystem.writeFile({path:names[i],data:await b64(blobs[i]),directory:'CACHE'});us.push(w.uri)}
+    await c.Plugins.Share.share({files:us,dialogTitle:'WhatsApp chunein'});wm('Image share ho gayi')}catch(e){wm('Share nahi hua')}
+    return;
+  }
+  try{
+    var files=blobs.map(function(b,i){return new File([b],names[i],{type:'image/png'})});
+    if(navigator.canShare&&navigator.canShare({files:files})){await navigator.share({files:files});wm('Image share ho gayi');return}
+  }catch(e){if(e&&e.name==='AbortError')return}
+  for(var j=0;j<blobs.length;j++){await saveFile(names[j],await blobs[j].arrayBuffer(),'image/png')}
+  wm(blobs.length+' image save hui, WhatsApp se bhej dein');
+};
 var cp=0;
 $('clr').onclick=function(){
   if(!items.length)return;
-  if(!cp){cp=1;this.textContent=isSaved()?'Sure? Tap again':'Save nahi hua! Phir tap';if(!isSaved())msg('Excel mein save nahi hua. Pehle Excel dabayein, warna data chala jayega','err');setTimeout(function(){cp=0;$('clr').textContent='Sab saaf karen'},3000);return}
-  items=[];save();cp=0;this.textContent='Sab saaf karen';msg('List clear ho gayi');render();
+  if(!cp){cp=1;this.textContent=isSaved()?'Sure? Tap again':'Save nahi hua! Phir tap';if(!isSaved())msg('Excel mein save nahi hua. Pehle Excel dabayein, warna data chala jayega','err');setTimeout(function(){cp=0;$('clr').textContent='Clear'},3000);return}
+  items=[];save();endEdit();cp=0;this.textContent='Clear';msg('List clear ho gayi');render();
 };
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function cl(s){return String(s||'').replace(/[\t\r\n]+/g,' ')}
-var byM=new Map(),acl=[],prow=null;
+var byM=new Map(),byA=new Map(),acl=[],prow=null;
 function today(){var d=new Date(),p=function(n){return String(n).padStart(2,'0')};return p(d.getDate())+'-'+p(d.getMonth()+1)+'-'+d.getFullYear()}
 function lookup(m){return byM.get(m)||null}
+function ak(v){return String(v||'').toUpperCase().replace(/\s/g,'').replace(/^0+/,'')}
+function cur(){var a=ak($('acc').value);if(a)return byA.get(a)||null;var m=$('mno').value;return m.length===8?lookup(m):null}
 function key(v){var d=String(v||'').replace(/\D/g,'');return d.length>=8?d.slice(-8):''}
-function build(){byM=new Map();for(var i=0;i<acl.length;i++){var k=key(acl[i][3]);if(k&&!byM.has(k))byM.set(k,acl[i])}$('aclst').textContent=acl.length?('ACL loaded: '+acl.length.toLocaleString()+' consumers'):'ACL not loaded'}
+function build(){byM=new Map();byA=new Map();for(var i=0;i<acl.length;i++){var k=key(acl[i][3]),a=ak(acl[i][0]);if(k&&!byM.has(k))byM.set(k,acl[i]);if(a&&!byA.has(a))byA.set(a,acl[i])}$('aclst').textContent=acl.length?('ACL loaded: '+acl.length.toLocaleString()+' consumers'):'ACL not loaded'}
 function aclmsg(t,c){var e=$('aclmsg');e.textContent=t;e.className=c||''}
 function idb(mode,fn){return new Promise(function(res,rej){var o=indexedDB.open('old_meter_acl',1);o.onupgradeneeded=function(){o.result.createObjectStore('s')};o.onerror=function(){rej(o.error)};o.onsuccess=function(){var db=o.result,t=db.transaction('s',mode),r=fn(t.objectStore('s'));t.oncomplete=function(){res(r&&r.result);db.close()};t.onerror=function(){rej(t.error)}}})}
-function showInfo(){var m=$('mno').value,b=$('info');if(m.length<8||!acl.length){b.innerHTML='';return}var c=lookup(m);b.innerHTML=c?'<b>'+esc(c[0])+'</b><br>'+esc(c[1])+'<br>'+esc(c[2]):'<span class="err">ACL mein yeh meter nahi mila</span>'}
+function showInfo(){var b=$('info'),a=$('acc').value.trim(),m=$('mno').value;if(!acl.length||(!a&&m.length<8)){b.innerHTML='';return}var c=cur();b.innerHTML=c?'<b>'+esc(c[0])+'</b><br>'+esc(c[1])+'<br>'+esc(c[2])+(c[4]?'<br>TBS: '+esc(c[4]):''):'<span class="err">ACL mein yeh '+(a?'account':'meter')+' nahi mila</span>'}
+$('acc').addEventListener('input',function(){this.value=this.value.replace(/[^A-Za-z0-9]/g,'').toUpperCase();showInfo()});
+$('acc').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();$('mno').focus()}});
 $('mno').addEventListener('input',showInfo);
 function parseCSV(t){var rows=[],r=[],f='',q=false,i=0,n=t.length,c;if(t.charCodeAt(0)===65279)i=1;for(;i<n;i++){c=t[i];if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}else if(c==='"')q=true;else if(c===','){r.push(f);f=''}else if(c==='\n'||c==='\r'){if(c==='\r'&&t[i+1]==='\n')i++;r.push(f);f='';rows.push(r);r=[]}else f+=c}if(f!==''||r.length){r.push(f);rows.push(r)}return rows}
 function startMap(rows){
   rows=rows.filter(function(r){return r&&r.some(function(x){return String(x).trim()!==''})});
   if(rows.length<2){aclmsg('File mein data nahi hai','err');return}
   prow=rows;var h=rows[0].map(String);
-  var opts=h.map(function(x,i){return '<option value="'+i+'">'+esc(x||('Column '+(i+1)))+'</option>'}).join('');
-  function g(re){for(var i=0;i<h.length;i++)if(re.test(h[i].toLowerCase()))return i;return 0}
-  var sel=[['Account ID','sa',g(/acc|consumer.?(id|no)|ref|cust/)],['Consumer Name','sn',g(/name/)],['Address','sd',g(/addr/)],['Old Meter No','sm',g(/meter|mtr|badge/)]];
-  $('map').innerHTML=sel.map(function(s){return '<label>'+s[0]+'</label><select id="'+s[1]+'">'+opts+'</select>'}).join('')+'<button class="add" id="aclsave">Save ACL ('+(rows.length-1).toLocaleString()+' rows)</button>';
-  sel.forEach(function(s){$(s[1]).value=s[2]});
-  $('aclsave').onclick=saveACL;aclmsg('Columns check karein, phir Save dabayein');
+  function opt(o){return (o?'<option value="-1">-- nahi --</option>':'')+h.map(function(x,i){return '<option value="'+i+'">'+esc(x||('Column '+(i+1)))+'</option>'}).join('')}
+  function g(re,ex,d){for(var i=0;i<h.length;i++){var t=h[i].toLowerCase();if(re.test(t)&&!(ex&&ex.test(t)))return i}return d}
+  var sel=[['Account ID *','sa',g(/acc|a\/c|consumer.?(id|no|number)/,/meter|badge|status|type|date/,0),0],['Consumer Name *','sn',g(/name/,/father|tbs/,Math.min(1,h.length-1)),0],['Address *','sd',g(/addr/,null,Math.min(2,h.length-1)),0],['TBS','sb',g(/tbs/,null,-1),1],['Old Meter No / Badge (meter se lookup ke liye)','sm',g(/meter|mtr|badge/,/status|type|make|size/,-1),1]];
+  $('map').innerHTML=sel.map(function(s){return '<label>'+s[0]+'</label><select id="'+s[1]+'">'+opt(s[3])+'</select>'}).join('')+'<div id="aprev" class="info" style="display:block"></div><button class="add" id="aclsave">Save ACL ('+(rows.length-1).toLocaleString()+' rows)</button>';
+  sel.forEach(function(s){$(s[1]).value=s[2];$(s[1]).onchange=aprev});
+  aprev();$('aclsave').onclick=saveACL;aclmsg('Preview dekh kar columns theek karein, phir Save dabayein');
+}
+function aprev(){
+  var ids=['sa','sn','sd','sb','sm'],t='';
+  for(var k=1;k<=2&&k<prow.length;k++){t+='<div>'+ids.map(function(i){var v=+$(i).value;return v>=0?esc(prow[k][v]):'-'}).join(' | ')+'</div>'}
+  $('aprev').innerHTML='<b>Preview (Account | Name | Address | TBS | Meter):</b>'+t;
 }
 function saveACL(){
-  var a=+$('sa').value,n=+$('sn').value,d=+$('sd').value,m=+$('sm').value,out=[];
-  for(var i=1;i<prow.length;i++){var r=prow[i];out.push([String(r[a]==null?'':r[a]).trim(),String(r[n]==null?'':r[n]).trim(),String(r[d]==null?'':r[d]).trim(),String(r[m]==null?'':r[m]).trim()])}
+  var a=+$('sa').value,n=+$('sn').value,d=+$('sd').value,b=+$('sb').value,m=+$('sm').value,out=[];
+  function v(r,i){return i<0||r[i]==null?'':String(r[i]).trim()}
+  for(var i=1;i<prow.length;i++){var r=prow[i];out.push([v(r,a),v(r,n),v(r,d),v(r,m),v(r,b)])}
   acl=out;build();prow=null;$('map').innerHTML='';showInfo();
   idb('readwrite',function(s){return s.put(out,'acl')}).then(function(){aclmsg('ACL save ho gayi: '+out.length.toLocaleString()+' consumers (offline)','good')}).catch(function(){aclmsg('ACL abhi load hai, lekin device par save nahi ho saki','err')});
 }
